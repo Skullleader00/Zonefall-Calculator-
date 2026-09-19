@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#14110f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TCG Life Counter</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Prompt:wght@400;500;600&display=swap">
+<style>
+:root{
+  --page:#14110f;
+  --sheet:#f7f4ef; --sheet-fg:#1f1b17; --sheet-mut:#6b635a; --sheet-line:#ddd6cb;
+  --field:#ffffff; --sheet-hi:#ebe5da; --danger:#b3261e; --scrim:rgba(10,8,6,.58);
+  --dial-bg:#efeae2; --dial-fg:#1d1a17;
+  --num:'Big Shoulders Display','Prompt','Arial Narrow',sans-serif;
+  --ui:'Prompt','Noto Sans Thai',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --sheet:#211d19; --sheet-fg:#f0ebe3; --sheet-mut:#a39a8e; --sheet-line:#3a342d;
+    --field:#2b2621; --sheet-hi:#302a24; --danger:#ff8f86; --scrim:rgba(0,0,0,.65);
+  }
+}
+:root[data-theme="dark"]{
+  --sheet:#211d19; --sheet-fg:#f0ebe3; --sheet-mut:#a39a8e; --sheet-line:#3a342d;
+  --field:#2b2621; --sheet-hi:#302a24; --danger:#ff8f86; --scrim:rgba(0,0,0,.65);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--page)}
+body{
+  font-family:var(--ui);color:#fff;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;overscroll-behavior:none;
+}
+button{font-family:inherit;cursor:pointer;touch-action:manipulation}
+input{-webkit-user-select:text;user-select:text}
+
+/* ---------- Table ---------- */
+.app{
+  position:relative;height:100vh;height:100dvh;max-width:720px;margin:0 auto;
+  display:grid;grid-template-rows:1fr 1fr;
+}
+.seam{position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;background:rgba(0,0,0,.4);z-index:4;pointer-events:none}
+.dial{
+  position:absolute;left:50%;top:50%;width:58px;height:58px;transform:translate(-50%,-50%);z-index:5;
+  border-radius:50%;border:3px solid var(--page);background:var(--dial-bg);
+  display:flex;align-items:center;justify-content:center;
+}
+.dial:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.bars{display:block;width:22px;height:2.5px;border-radius:2px;background:var(--dial-fg);box-shadow:0 -7px 0 var(--dial-fg),0 7px 0 var(--dial-fg)}
+
+/* ---------- Player panel ---------- */
+.panel{
+  --h:0;--s:0;
+  --pbg:hsl(var(--h) calc(var(--s) * .5%) 13%);
+  --pfg:hsl(var(--h) calc(var(--s) * 1%) 92%);
+  --pacc:hsl(var(--h) calc(var(--s) * 1.1%) 64%);
+  --pbtn:hsl(var(--h) calc(var(--s) * .5%) 20%);
+  --pbtn-hi:hsl(var(--h) calc(var(--s) * .5%) 28%);
+  --pmut:hsl(var(--h) calc(var(--s) * .4%) 70%);
+  position:relative;overflow:hidden;background:var(--pbg);color:var(--pfg);
+  transition:background-color .25s;
+}
+.panel.flash{background:hsl(var(--h) calc(var(--s) * .6%) 26%)}
+.inner{position:absolute;inset:0;display:flex;flex-direction:column;padding:8px 12px 10px}
+.panel.top .inner{transform:rotate(180deg);padding-bottom:calc(10px + env(safe-area-inset-top))}
+.panel.bottom .inner{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.panel button:focus-visible{outline:3px solid var(--pacc);outline-offset:2px}
+
+.hd{display:flex;justify-content:space-between;align-items:center;min-height:44px}
+.pill{font-size:.82rem;font-weight:600;padding:.28rem .8rem;border-radius:99px;background:var(--pacc);color:var(--pbg)}
+.pill:empty{display:none}
+.panel.down .pill{background:var(--pfg)}
+.textbtn{background:none;border:0;color:var(--pmut);font-size:.85rem;padding:.5rem .6rem;min-height:44px;border-radius:10px}
+.textbtn:active{color:var(--pfg)}
+
+.lw{flex:1;min-height:0;display:grid;grid-template-columns:1fr auto 1fr;gap:8px}
+.step{
+  border:0;border-radius:20px;background:var(--pbtn);color:var(--pfg);
+  font-family:var(--num);font-weight:700;font-size:3.2rem;line-height:1;
+}
+.step:active{background:var(--pbtn-hi)}
+.lp{position:relative;display:flex;align-items:center;justify-content:center;min-width:34vw}
+.num{
+  font-family:var(--num);font-weight:900;line-height:1;font-variant-numeric:tabular-nums;
+  font-size:min(30vw,20vh,180px);font-size:min(30vw,20dvh,180px);
+}
+.num.bump{animation:bump .14s ease-out}
+.panel.down .num{opacity:.5}
+.delta{
+  position:absolute;top:2px;left:50%;transform:translateX(-50%);
+  font-family:var(--num);font-weight:700;font-size:1.5rem;opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.delta.show{opacity:1}
+.delta.up{color:var(--pacc)}
+.delta.down{color:var(--pmut)}
+
+.mx{display:flex;justify-content:center;align-items:center;gap:8px;color:var(--pmut);font-size:.85rem;padding-top:6px}
+.mx b{font-weight:600;color:var(--pfg);min-width:2ch;text-align:center}
+.mini{width:40px;height:40px;border-radius:50%;border:0;background:var(--pbtn);color:var(--pfg);font-size:1.1rem}
+.mini:active{background:var(--pbtn-hi)}
+
+.rs{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px}
+.rs .lbl{font-weight:600;color:var(--pmut);font-size:.95rem}
+.rs .ctl{display:flex;align-items:center;gap:8px}
+.rv{font-family:var(--num);font-weight:800;font-size:2.3rem;min-width:2ch;text-align:center;line-height:1}
+.round{width:48px;height:48px;border-radius:50%;border:0;background:var(--pbtn);color:var(--pfg);font-size:1.4rem}
+.round:active{background:var(--pbtn-hi)}
+
+@keyframes bump{50%{transform:scale(1.06)}}
+
+/* ---------- Sheet ---------- */
+.scrim{position:fixed;inset:0;z-index:20;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.scrim[hidden]{display:none}
+.sheet{
+  width:100%;max-width:560px;max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;
+  background:var(--sheet);color:var(--sheet-fg);border-radius:20px 20px 0 0;
+  padding-bottom:env(safe-area-inset-bottom);font-family:var(--ui);
+  animation:rise .2s ease-out;
+}
+@keyframes rise{from{transform:translateY(24px);opacity:0}}
+.sh-hd{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--sheet-line);min-height:56px}
+.sh-hd h2{flex:1;text-align:center;font-size:1.05rem;font-weight:600}
+.sh-hd button{background:none;border:0;color:var(--sheet-fg);font-size:.95rem;padding:.6rem .8rem;min-height:44px;min-width:64px;border-radius:10px}
+.sh-hd button:hover{background:var(--sheet-hi)}
+.sh-hd button[hidden]{display:block;visibility:hidden}
+.sh-body{overflow:auto;padding:6px 16px 18px}
+.scrim :focus-visible{outline:3px solid var(--sheet-fg);outline-offset:2px}
+
+.menu button{
+  display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--sheet-line);
+  color:inherit;font-size:1rem;padding:.95rem .25rem;min-height:54px;
+}
+.menu button:last-child{border-bottom:0}
+.menu button:hover{background:var(--sheet-hi)}
+.menu button.danger{color:var(--danger);font-weight:600}
+.menu button[hidden]{display:none}
+
+.search{
+  width:100%;padding:.75rem .9rem;margin:10px 0 4px;border-radius:12px;border:1px solid var(--sheet-line);
+  background:var(--field);color:inherit;font:inherit;font-size:1rem;
+}
+.hint{color:var(--sheet-mut);font-size:.85rem;margin:.5rem 0}
+.ent{padding:.8rem 0;border-bottom:1px solid var(--sheet-line)}
+.ent:last-child{border-bottom:0}
+.ent dt{font-weight:600}
+.ent dd{color:var(--sheet-mut);font-size:.92rem;margin-top:.2rem;line-height:1.5}
+.none{color:var(--sheet-mut);padding:1.5rem 0;text-align:center}
+
+.cg{border:0;margin:.9rem 0}
+.cg legend{font-weight:600;margin-bottom:.5rem}
+.sw{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.swb{background:none;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:.35rem;padding:.4rem 0;border-radius:12px}
+.swb .dot{width:40px;height:40px;border-radius:50%}
+.swb .tn{font-size:.75rem;color:var(--sheet-mut)}
+.swb[aria-pressed="true"] .dot{outline:3px solid var(--sheet-fg);outline-offset:3px}
+.swb[aria-pressed="true"] .tn{color:var(--sheet-fg);font-weight:600}
+
+.tu{width:100%;border-collapse:collapse;margin:.5rem 0}
+.tu th{font-weight:500;font-size:.85rem;color:var(--sheet-mut);padding:.4rem .25rem;text-align:center}
+.tu tbody th{color:var(--sheet-fg);font-size:.9rem}
+.tu td{padding:5px 4px;width:30%}
+.tu input{
+  width:100%;text-align:center;padding:.65rem .25rem;border-radius:10px;border:1px solid var(--sheet-line);
+  background:var(--field);color:inherit;font:inherit;font-size:1.05rem;
+}
+.btn{display:block;width:100%;border-radius:12px;padding:.9rem 1rem;font-size:1rem;font-weight:600;border:1px solid var(--sheet-fg);margin-top:.6rem}
+.btn.primary{background:var(--sheet-fg);color:var(--sheet)}
+.btn.ghost{background:none;color:var(--sheet-fg);border-color:var(--sheet-line)}
+.verdict{text-align:center;padding:1.4rem 0 .6rem}
+.verdict h3{font-size:1.6rem;font-weight:700}
+.verdict p{color:var(--sheet-mut);margin-top:.5rem;line-height:1.5}
+
+@media (prefers-reduced-motion: reduce){
+  .num.bump,.sheet{animation:none}
+  .panel,.delta{transition:none}
+}
+</style>
+</head>
+<body>
+
+<main class="app" id="app">
+  <div class="seam"></div>
+  <button class="dial" id="dial" aria-label="เปิดเมนู"><span class="bars"></span></button>
+</main>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title">
+    <div class="sh-hd">
+      <button id="sh-back" hidden>ย้อนกลับ</button>
+      <h2 id="sh-title">เมนู</h2>
+      <button id="sh-close">ปิด</button>
+    </div>
+    <div class="sh-body">
+
+      <div class="view menu" data-v="menu">
+        <button data-act="first">หาผู้เริ่มก่อน-หลัง</button>
+        <button data-go="rules">ค้นหากติกา / คีย์เวิร์ด</button>
+        <button id="m-fs" data-act="fs">เปิด/ปิดโหมดเต็มจอ</button>
+        <button data-go="colors">เปลี่ยนสีธีม</button>
+        <button data-go="timeup">ตัดสินผลแพ้-ชนะ เมื่อเวลาหมด</button>
+        <button class="danger" id="newgame">เริ่มเกมใหม่ทั้งหมด</button>
+      </div>
+
+      <div class="view" data-v="rules" hidden>
+        <input class="search" id="rules-q" type="search" placeholder="พิมพ์คำที่ต้องการค้นหา" aria-label="ค้นหากติกาหรือคีย์เวิร์ด" autocomplete="off">
+        <dl id="rules-list"></dl>
+        <p class="hint">ข้อมูลตัวอย่าง แก้ได้ที่ GAME.rules ในโค้ด</p>
+      </div>
+
+      <div class="view" data-v="colors" hidden>
+        <div id="colors"></div>
+      </div>
+
+      <div class="view" data-v="timeup" hidden>
+        <p class="hint">เทียบทีละข้อตามลำดับ ข้อแรกที่ค่าต่างกันจะเป็นตัวตัดสิน ผู้ที่มากกว่าชนะ</p>
+        <table class="tu">
+          <thead><tr><th scope="col">P2 (บน)</th><th scope="col">เกณฑ์</th><th scope="col">P1 (ล่าง)</th></tr></thead>
+          <tbody id="tu-body"></tbody>
+        </table>
+        <button class="btn primary" id="tu-go">ตัดสินผล</button>
+      </div>
+
+      <div class="view" data-v="result" hidden>
+        <div class="verdict"><h3 id="rs-title"></h3><p id="rs-sub"></p></div>
+        <button class="btn primary" id="rs-back">กลับไปหน้าคำนวณ</button>
+        <button class="btn ghost" id="rs-close">ปิดหน้าต่าง</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   ตั้งค่าเกม — แก้ตรงนี้ที่เดียวเพื่อเปลี่ยนเป็นเกมของตัวเอง
+   ===================================================================== */
+const GAME = {
+  name: 'TCG Life Counter',
+  lifeLabel: 'Flare',     // ชื่อตัวนับหลัก (ตัวเลขใหญ่ตรงกลาง)
+  startLife: 8,           // ค่าเริ่มต้น
+  maxLife: 8,             // ค่า Max เริ่มต้น (กด −/+ ปรับได้ระหว่างเล่น)
+  minLife: 0,             // ค่าต่ำสุด
+  outLabel: '',           // ข้อความเมื่อถึงค่าต่ำสุด เช่น 'แพ้' (เว้นว่าง = ไม่แสดงอะไร)
+  capAtMax: true,         // true = ค่าเกิน Max ไม่ได้
+  resource: { label: 'Core Point', start: 0, min: 0, max: 99 },  // ตัวนับตัวที่ 2
+
+  // เกณฑ์ตัดสินเมื่อหมดเวลา เรียงตามลำดับความสำคัญ
+  //   fromLife:true  = ดึงค่าจากตัวนับหลัก (Flare) ปัจจุบันมาใส่ให้
+  //   lowerWins:true = ค่าน้อยกว่าชนะ (ถ้าไม่ใส่ ค่ามากกว่าชนะ)
+  timeUp: [
+    { label: 'HP' },
+    { label: 'การ์ดบนมือ' },
+    { label: 'การ์ดในทรัพยากร' },
+    { label: 'การ์ดบนสนาม' },
+    { label: 'การ์ดในดรอปโซน + รีมูฟโซน' }
+  ],
+
+  // กติกา / คีย์เวิร์ด (ตัวอย่าง)
+  rules: [
+    { t: 'Active / Inactive', d: 'การ์ดที่วางตั้งพร้อมใช้งาน (Active) และการ์ดที่วางนอนหลังใช้งานแล้ว (Inactive)' },
+    { t: 'Once per turn', d: 'ใช้ความสามารถนี้ได้ 1 ครั้งต่อเทิร์น' },
+    { t: 'Quick', d: 'ใช้แทรกได้ทุกเมื่อที่ได้รับสิทธิ์ แม้ในเทิร์นของคู่แข่ง' },
+    { t: 'Chain', d: 'เมื่อมีการใช้ความสามารถซ้อนกัน ให้ประมวลผลจากใบล่าสุดย้อนกลับไปหาใบแรก' },
+    { t: 'Cost', d: 'ทรัพยากรที่ต้องจ่ายก่อนความสามารถจะเกิดผล' },
+    { t: 'Drop zone', d: 'พื้นที่วางการ์ดที่ถูกทำลายหรือใช้งานแล้ว' }
+  ]
+};
+
+const THEMES = [
+  { n: 'แดงเพลิง',   h: 6,   s: 70 },
+  { n: 'ฟ้าคราม',    h: 210, s: 70 },
+  { n: 'เขียวหยก',   h: 155, s: 55 },
+  { n: 'ม่วงราตรี',  h: 270, s: 55 },
+  { n: 'ทองอำพัน',   h: 38,  s: 80 },
+  { n: 'ชมพูกุหลาบ', h: 335, s: 65 },
+  { n: 'เทาชนวน',    h: 215, s: 12 },
+  { n: 'ฟ้าน้ำแข็ง', h: 190, s: 60 }
+];
+const PN = ['P2 (บน)', 'P1 (ล่าง)'];   // index 0 = ผู้เล่นบน, 1 = ผู้เล่นล่าง
+/* ===================================================================== */
+
+const KEY = 'tcg-life-counter:v2';
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+document.title = GAME.name;
+
+/* ---------- state ---------- */
+const fresh = () => ({
+  life: [GAME.startLife, GAME.startLife],
+  max:  [GAME.maxLife, GAME.maxLife],
+  res:  [GAME.resource.start, GAME.resource.start],
+  theme: [1, 0],
+  first: null
+});
+const pair = a => Array.isArray(a) && a.length === 2 && a.every(Number.isFinite);
+let S = fresh();
+try {
+  const o = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (o && pair(o.life) && pair(o.max) && pair(o.res) && pair(o.theme) &&
+      o.theme.every(k => k >= 0 && k < THEMES.length) && (o.first === null || o.first === 0 || o.first === 1)) {
+    S = Object.assign(fresh(), o);
+  }
+} catch (e) {}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+/* ---------- build panels ---------- */
+const app = $('#app'), seam = $('.seam');
+const P = [0, 1].map(i => {
+  const el = document.createElement('section');
+  el.className = 'panel ' + (i === 0 ? 'top' : 'bottom');
+  el.setAttribute('aria-label', 'ผู้เล่น ' + PN[i]);
+  el.innerHTML =
+    '<div class="inner">' +
+      '<div class="hd"><span class="pill"></span><button class="textbtn" data-a="resetLife">↻ รีเซ็ต ' + esc(GAME.lifeLabel) + '</button></div>' +
+      '<div class="lw">' +
+        '<button class="step" data-a="dec" aria-label="ลด ' + esc(GAME.lifeLabel) + ' ของ ' + PN[i] + '">−</button>' +
+        '<div class="lp"><span class="delta" aria-hidden="true"></span><span class="num" aria-label="' + esc(GAME.lifeLabel) + ' ' + PN[i] + '">0</span></div>' +
+        '<button class="step" data-a="inc" aria-label="เพิ่ม ' + esc(GAME.lifeLabel) + ' ของ ' + PN[i] + '">+</button>' +
+      '</div>' +
+      '<div class="mx"><span>Max ' + esc(GAME.lifeLabel) + '</span>' +
+        '<button class="mini" data-a="mdec" aria-label="ลดค่า Max ของ ' + PN[i] + '">−</button><b>0</b>' +
+        '<button class="mini" data-a="minc" aria-label="เพิ่มค่า Max ของ ' + PN[i] + '">+</button></div>' +
+      '<div class="rs"><span class="lbl">' + esc(GAME.resource.label) + '</span>' +
+        '<div class="ctl">' +
+          '<button class="round" data-a="rdec" aria-label="ลด ' + esc(GAME.resource.label) + '">−</button>' +
+          '<span class="rv">0</span>' +
+          '<button class="round" data-a="rinc" aria-label="เพิ่ม ' + esc(GAME.resource.label) + '">+</button>' +
+        '</div>' +
+        '<button class="textbtn" data-a="resetRes">↻ รีเซ็ต</button>' +
+      '</div>' +
+    '</div>';
+  app.insertBefore(el, seam);
+  return {
+    el, num: $('.num', el), delta: $('.delta', el), mxv: $('.mx b', el), rv: $('.rv', el), pill: $('.pill', el),
+    pend: 0, dt: null
+  };
+});
+
+/* ---------- actions ---------- */
+function bump(el){
+  if (reduced) return;
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+}
+function showDelta(i, d){
+  const p = P[i];
+  p.pend += d;
+  clearTimeout(p.dt);
+  if (!p.pend){ p.delta.classList.remove('show'); return; }
+  p.delta.textContent = (p.pend > 0 ? '+' : '−') + Math.abs(p.pend);
+  p.delta.className = 'delta show ' + (p.pend > 0 ? 'up' : 'down');
+  p.dt = setTimeout(() => { p.pend = 0; p.delta.classList.remove('show'); }, 1400);
+}
+function changeLife(i, d){
+  const cur = S.life[i];
+  let nv = Math.max(GAME.minLife, cur + d);
+  if (GAME.capAtMax) nv = Math.min(Math.max(S.max[i], GAME.minLife), nv);
+  const applied = nv - cur;
+  if (!applied) return;
+  S.life[i] = nv; showDelta(i, applied); render(); bump(P[i].num); save();
+}
+function changeMax(i, d){
+  S.max[i] = clamp(S.max[i] + d, 1, 999);
+  if (GAME.capAtMax) S.life[i] = Math.min(S.life[i], S.max[i]);
+  render(); save();
+}
+function changeRes(i, d){
+  const r = GAME.resource;
+  const nv = clamp(S.res[i] + d, r.min, r.max);
+  if (nv === S.res[i]) return;
+  S.res[i] = nv; render(); bump(P[i].rv); save();
+}
+
+// กดค้างเพื่อเพิ่ม/ลดต่อเนื่อง
+function bindHold(btn, fn){
+  let t = null, iv = null;
+  const stop = () => { clearTimeout(t); clearInterval(iv); t = iv = null; };
+  btn.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault(); stop(); fn();
+    t = setTimeout(() => { iv = setInterval(fn, 110); }, 420);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach(ev => btn.addEventListener(ev, stop));
+  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fn(); } });
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+}
+P.forEach((p, i) => {
+  const b = a => $('[data-a="' + a + '"]', p.el);
+  bindHold(b('dec'),  () => changeLife(i, -1));
+  bindHold(b('inc'),  () => changeLife(i, 1));
+  bindHold(b('rdec'), () => changeRes(i, -1));
+  bindHold(b('rinc'), () => changeRes(i, 1));
+  bindHold(b('mdec'), () => changeMax(i, -1));
+  bindHold(b('minc'), () => changeMax(i, 1));
+  b('resetLife').addEventListener('click', () => {
+    S.life[i] = GAME.startLife; S.max[i] = GAME.maxLife;
+    p.pend = 0; p.delta.classList.remove('show'); render(); bump(p.num); save();
+  });
+  b('resetRes').addEventListener('click', () => { S.res[i] = GAME.resource.start; render(); bump(p.rv); save(); });
+});
+
+/* ---------- render ---------- */
+function render(){
+  P.forEach((p, i) => {
+    const t = THEMES[S.theme[i]];
+    p.el.style.setProperty('--h', t.h);
+    p.el.style.setProperty('--s', t.s);
+    p.num.textContent = S.life[i];
+    p.mxv.textContent = S.max[i];
+    p.rv.textContent = S.res[i];
+    const out = !!GAME.outLabel && S.life[i] <= GAME.minLife;
+    p.el.classList.toggle('down', out);
+    p.pill.textContent = out ? GAME.outLabel : (S.first === null ? '' : (S.first === i ? 'เริ่มก่อน' : 'เริ่มหลัง'));
+  });
+}
+
+/* ---------- first / second player ---------- */
+let picking = false;
+function pickFirst(){
+  if (picking) return;
+  closeSheet();
+  const w = Math.random() < .5 ? 0 : 1;
+  if (reduced){ S.first = w; render(); save(); return; }
+  picking = true; S.first = null; render();
+  const seq = [];
+  for (let k = 0; k < 10; k++) seq.push(k % 2);
+  if (seq[seq.length - 1] !== w) seq.push(w);
+  let k = 0;
+  const step = () => {
+    P.forEach((p, i) => p.el.classList.toggle('flash', i === seq[k]));
+    k++;
+    if (k < seq.length) setTimeout(step, 90 + k * 14);
+    else setTimeout(() => {
+      P.forEach(p => p.el.classList.remove('flash'));
+      S.first = w; picking = false; render(); save();
+    }, 400);
+  };
+  step();
+}
+
+/* ---------- sheet ---------- */
+const scrim = $('#scrim'), sheetEl = $('#sheet'), shTitle = $('#sh-title'), shBack = $('#sh-back');
+const TITLES = { menu: 'เมนู', rules: 'กติกา / คีย์เวิร์ด', colors: 'สีธีมผู้เล่น', timeup: 'ตัดสินเมื่อหมดเวลา', result: 'ผลการตัดสิน' };
+const PARENT = { rules: 'menu', colors: 'menu', timeup: 'menu', result: 'timeup' };
+let curView = 'menu';
+
+function show(v){
+  const prev = curView;
+  curView = v;
+  $$('.view').forEach(el => { el.hidden = el.dataset.v !== v; });
+  shTitle.textContent = TITLES[v];
+  shBack.hidden = !PARENT[v];
+  $('.sh-body').scrollTop = 0;
+  if (v === 'rules'){ $('#rules-q').value = ''; renderRules(''); }
+  if (v === 'colors') buildColors();
+  if (v === 'timeup') buildTimeup(prev !== 'result');
+}
+function openSheet(v){
+  scrim.hidden = false;
+  show(v || 'menu');
+  const f = (v && v !== 'menu') ? $('#sh-close') : $('.menu button');
+  f.focus({ preventScroll: true });
+}
+function closeSheet(){
+  if (scrim.hidden) return;
+  scrim.hidden = true;
+  disarmNew();
+  $('#dial').focus({ preventScroll: true });
+}
+$('#dial').addEventListener('click', () => openSheet('menu'));
+$('#sh-close').addEventListener('click', closeSheet);
+shBack.addEventListener('click', () => show(PARENT[curView] || 'menu'));
+scrim.addEventListener('click', e => { if (e.target === scrim) closeSheet(); });
+scrim.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ closeSheet(); return; }
+  if (e.key !== 'Tab') return;
+  const f = $$('button, input', sheetEl).filter(el => !el.closest('[hidden]') && !el.hidden);
+  if (!f.length) return;
+  const a = f[0], b = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === a){ e.preventDefault(); b.focus(); }
+  else if (!e.shiftKey && document.activeElement === b){ e.preventDefault(); a.focus(); }
+});
+
+/* menu */
+$$('[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.go)));
+$('[data-act="first"]').addEventListener('click', pickFirst);
+
+const fsBtn = $('#m-fs');
+const fsOK = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+if (!fsOK) fsBtn.hidden = true;
+fsBtn.addEventListener('click', () => {
+  try {
+    const d = document, r = d.documentElement;
+    const on = d.fullscreenElement || d.webkitFullscreenElement;
+    if (on){ (d.exitFullscreen || d.webkitExitFullscreen).call(d); }
+    else { const p = (r.requestFullscreen || r.webkitRequestFullscreen).call(r); if (p && p.catch) p.catch(() => {}); }
+  } catch (e) {}
+  closeSheet();
+});
+
+/* new game (แตะสองครั้งเพื่อยืนยัน) */
+const ng = $('#newgame'); let ngT = null;
+function disarmNew(){ clearTimeout(ngT); ng.dataset.arm = ''; ng.textContent = 'เริ่มเกมใหม่ทั้งหมด'; }
+ng.addEventListener('click', () => {
+  if (!ng.dataset.arm){
+    ng.dataset.arm = '1';
+    ng.textContent = 'แตะอีกครั้งเพื่อเริ่มเกมใหม่';
+    ngT = setTimeout(disarmNew, 3000);
+    return;
+  }
+  disarmNew();
+  const th = S.theme;
+  S = fresh(); S.theme = th;
+  TU = [{}, {}];
+  P.forEach(p => { p.pend = 0; p.delta.classList.remove('show'); });
+  render(); save(); closeSheet();
+});
+
+/* rules */
+function renderRules(q){
+  q = q.trim().toLowerCase();
+  const items = GAME.rules.filter(r => !q || (r.t + ' ' + r.d).toLowerCase().includes(q));
+  $('#rules-list').innerHTML = items.length
+    ? items.map(r => '<div class="ent"><dt>' + esc(r.t) + '</dt><dd>' + esc(r.d) + '</dd></div>').join('')
+    : '<p class="none">ไม่พบคีย์เวิร์ดที่ตรงกัน ลองพิมพ์คำอื่น</p>';
+}
+$('#rules-q').addEventListener('input', e => renderRules(e.target.value));
+
+/* colors */
+function buildColors(){
+  $('#colors').innerHTML = [0, 1].map(i =>
+    '<fieldset class="cg"><legend>' + PN[i] + '</legend><div class="sw">' +
+    THEMES.map((t, k) =>
+      '<button class="swb" data-p="' + i + '" data-k="' + k + '" aria-pressed="' + (S.theme[i] === k) + '" aria-label="' + PN[i] + ' ' + t.n + '">' +
+      '<span class="dot" style="background:hsl(' + t.h + ' ' + t.s + '% 52%)"></span><span class="tn">' + t.n + '</span></button>'
+    ).join('') + '</div></fieldset>'
+  ).join('');
+}
+$('#colors').addEventListener('click', e => {
+  const b = e.target.closest('.swb');
+  if (!b) return;
+  S.theme[+b.dataset.p] = +b.dataset.k;
+  render(); save(); buildColors();
+  const again = $('.swb[data-p="' + b.dataset.p + '"][data-k="' + b.dataset.k + '"]');
+  if (again) again.focus({ preventScroll: true });
+});
+
+/* time-up judge */
+let TU = [{}, {}];
+function buildTimeup(reset){
+  if (reset) TU = [{}, {}];
+  $('#tu-body').innerHTML = GAME.timeUp.map((c, k) => {
+    const cell = p => {
+      const v = TU[p][k] !== undefined ? TU[p][k] : (c.fromLife ? S.life[p] : '');
+      return '<td><input type="number" inputmode="numeric" min="0" data-p="' + p + '" data-k="' + k + '" value="' + esc(v) + '" aria-label="' + esc(c.label) + ' ' + PN[p] + '"></td>';
+    };
+    return '<tr>' + cell(0) + '<th scope="row">' + esc(c.label) + '</th>' + cell(1) + '</tr>';
+  }).join('');
+}
+$('#tu-body').addEventListener('input', e => {
+  const t = e.target;
+  if (t.matches('input')) TU[+t.dataset.p][+t.dataset.k] = t.value;
+});
+$('#tu-go').addEventListener('click', () => {
+  const val = (p, k) => {
+    const v = $('input[data-p="' + p + '"][data-k="' + k + '"]').value;
+    return v === '' ? 0 : Number(v);
+  };
+  const title = $('#rs-title'), sub = $('#rs-sub');
+  for (let k = 0; k < GAME.timeUp.length; k++){
+    const c = GAME.timeUp[k], a = val(0, k), b = val(1, k);
+    if (a === b) continue;
+    const w = c.lowerWins ? (a < b ? 0 : 1) : (a > b ? 0 : 1);
+    title.textContent = PN[w] + ' ชนะ';
+    sub.textContent = 'ตัดสินที่ข้อ ' + (k + 1) + ' ' + c.label + ' (' + PN[0] + ' ' + a + ' : ' + b + ' ' + PN[1] + ')';
+    show('result');
+    return;
+  }
+  title.textContent = 'เสมอ';
+  sub.textContent = 'ทุกเกณฑ์มีค่าเท่ากัน';
+  show('result');
+});
+$('#rs-back').addEventListener('click', () => show('timeup'));
+$('#rs-close').addEventListener('click', closeSheet);
+
+/* ---------- keep screen awake (ถ้าเครื่องรองรับ) ---------- */
+let wl = null;
+async function keepAwake(){
+  try {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible' && !wl){
+      wl = await navigator.wakeLock.request('screen');
+      wl.addEventListener('release', () => { wl = null; });
+    }
+  } catch (e) { wl = null; }
+}
+document.addEventListener('visibilitychange', keepAwake);
+window.addEventListener('pointerdown', keepAwake, { once: true });
+
+render();
+keepAwake();
+})();
+</script>
+</body>
+</html>
